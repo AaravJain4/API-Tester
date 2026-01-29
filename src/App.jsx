@@ -1,0 +1,1361 @@
+import { useState, useEffect } from "react";
+import "./App.css";
+
+const HTTP_METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "OPTIONS",
+  "HEAD",
+];
+
+function App() {
+  const [method, setMethod] = useState("GET");
+  const [url, setUrl] = useState("");
+  const [activeTab, setActiveTab] = useState("params");
+  const [params, setParams] = useState([{ key: "", value: "", enabled: true }]);
+  const [headers, setHeaders] = useState([
+    { key: "", value: "", enabled: true },
+  ]);
+  const [body, setBody] = useState("");
+  const [bodyType, setBodyType] = useState("json");
+  const [response, setResponse] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [envVars, setEnvVars] = useState([{ key: "", value: "" }]);
+  const [showEnv, setShowEnv] = useState(false);
+  const [responseTab, setResponseTab] = useState("pretty");
+  const [codeLanguage, setCodeLanguage] = useState("curl");
+
+  // New: Form Data state for file uploads
+  const [formParams, setFormParams] = useState([
+    { key: "", value: "", type: "text", file: null, enabled: true },
+  ]);
+
+  // New: Authorization state
+  const [authType, setAuthType] = useState("none");
+  const [bearerToken, setBearerToken] = useState("");
+  const [basicUsername, setBasicUsername] = useState("");
+  const [basicPassword, setBasicPassword] = useState("");
+  const [apiKeyHeader, setApiKeyHeader] = useState("X-API-Key");
+  const [apiKeyValue, setApiKeyValue] = useState("");
+
+  // New: Tests/Scripts state
+  const [preRequestScript, setPreRequestScript] = useState("");
+  const [testScript, setTestScript] = useState("");
+  const [testResults, setTestResults] = useState([]);
+
+  // Load history and env vars from localStorage
+  useEffect(() => {
+    const savedHistory = localStorage.getItem("apiHistory");
+    const savedEnvVars = localStorage.getItem("envVars");
+    if (savedHistory) setHistory(JSON.parse(savedHistory));
+    if (savedEnvVars) setEnvVars(JSON.parse(savedEnvVars));
+  }, []);
+
+  const addParam = () => {
+    setParams([...params, { key: "", value: "", enabled: true }]);
+  };
+
+  const updateParam = (index, field, value) => {
+    const newParams = [...params];
+    newParams[index][field] = value;
+    setParams(newParams);
+  };
+
+  const removeParam = (index) => {
+    setParams(params.filter((_, i) => i !== index));
+  };
+
+  const addHeader = () => {
+    setHeaders([...headers, { key: "", value: "", enabled: true }]);
+  };
+
+  const updateHeader = (index, field, value) => {
+    const newHeaders = [...headers];
+    newHeaders[index][field] = value;
+    setHeaders(newHeaders);
+  };
+
+  const removeHeader = (index) => {
+    setHeaders(headers.filter((_, i) => i !== index));
+  };
+
+  const addEnvVar = () => {
+    setEnvVars([...envVars, { key: "", value: "" }]);
+  };
+
+  const updateEnvVar = (index, field, value) => {
+    const newEnvVars = [...envVars];
+    newEnvVars[index][field] = value;
+    setEnvVars(newEnvVars);
+    localStorage.setItem("envVars", JSON.stringify(newEnvVars));
+  };
+
+  const removeEnvVar = (index) => {
+    const newEnvVars = envVars.filter((_, i) => i !== index);
+    setEnvVars(newEnvVars);
+    localStorage.setItem("envVars", JSON.stringify(newEnvVars));
+  };
+
+  const replaceEnvVars = (text) => {
+    let result = text;
+    envVars.forEach(({ key, value }) => {
+      if (key && value) {
+        result = result.replace(new RegExp(`{{${key}}}`, "g"), value);
+      }
+    });
+    return result;
+  };
+
+  const addFormParam = () => {
+    setFormParams([
+      ...formParams,
+      { key: "", value: "", type: "text", file: null, enabled: true },
+    ]);
+  };
+
+  const updateFormParam = (index, field, value) => {
+    const newFormParams = [...formParams];
+    newFormParams[index][field] = value;
+    setFormParams(newFormParams);
+  };
+
+  const removeFormParam = (index) => {
+    setFormParams(formParams.filter((_, i) => i !== index));
+  };
+
+  const buildUrl = () => {
+    let finalUrl = replaceEnvVars(url);
+    const enabledParams = params.filter((p) => p.enabled && p.key);
+
+    if (enabledParams.length > 0) {
+      const queryString = enabledParams
+        .map(
+          (p) =>
+            `${encodeURIComponent(p.key)}=${encodeURIComponent(replaceEnvVars(p.value))}`,
+        )
+        .join("&");
+      finalUrl += (finalUrl.includes("?") ? "&" : "?") + queryString;
+    }
+
+    return finalUrl;
+  };
+
+  const getAuthHeaders = () => {
+    const authHeaders = {};
+
+    if (authType === "bearer" && bearerToken) {
+      authHeaders["Authorization"] = `Bearer ${replaceEnvVars(bearerToken)}`;
+    } else if (authType === "basic" && basicUsername && basicPassword) {
+      const credentials = btoa(`${basicUsername}:${basicPassword}`);
+      authHeaders["Authorization"] = `Basic ${credentials}`;
+    } else if (authType === "apikey" && apiKeyHeader && apiKeyValue) {
+      authHeaders[apiKeyHeader] = replaceEnvVars(apiKeyValue);
+    }
+
+    return authHeaders;
+  };
+
+  const runTests = (response) => {
+    if (!testScript.trim()) return [];
+
+    const results = [];
+    const testContext = {
+      response: {
+        status: response.status,
+        headers: response.headers,
+        body: response.body,
+        duration: response.duration,
+      },
+      expect: (actual) => ({
+        toBe: (expected) => {
+          const passed = actual === expected;
+          results.push({
+            passed,
+            message: passed
+              ? `✓ Expected ${actual} to be ${expected}`
+              : `✗ Expected ${actual} to be ${expected}`,
+          });
+        },
+        toEqual: (expected) => {
+          const passed = JSON.stringify(actual) === JSON.stringify(expected);
+          results.push({
+            passed,
+            message: passed ? `✓ Values are equal` : `✗ Values are not equal`,
+          });
+        },
+        toContain: (expected) => {
+          const passed = JSON.stringify(actual).includes(expected);
+          results.push({
+            passed,
+            message: passed
+              ? `✓ Contains ${expected}`
+              : `✗ Does not contain ${expected}`,
+          });
+        },
+        toBeLessThan: (expected) => {
+          const passed = actual < expected;
+          results.push({
+            passed,
+            message: passed
+              ? `✓ ${actual} < ${expected}`
+              : `✗ ${actual} >= ${expected}`,
+          });
+        },
+      }),
+    };
+
+    try {
+      const testFunction = new Function("response", "expect", testScript);
+      testFunction(testContext.response, testContext.expect);
+    } catch (error) {
+      results.push({
+        passed: false,
+        message: `✗ Test error: ${error.message}`,
+      });
+    }
+
+    return results;
+  };
+
+  const sendRequest = async () => {
+    setLoading(true);
+    setResponse(null);
+    setTestResults([]);
+
+    const startTime = performance.now();
+    const finalUrl = buildUrl();
+
+    try {
+      // Run pre-request script
+      if (preRequestScript.trim()) {
+        try {
+          const preRequestFunction = new Function(preRequestScript);
+          preRequestFunction();
+        } catch (error) {
+          console.error("Pre-request script error:", error);
+        }
+      }
+
+      const requestHeaders = { ...getAuthHeaders() };
+      headers
+        .filter((h) => h.enabled && h.key)
+        .forEach((h) => {
+          requestHeaders[h.key] = replaceEnvVars(h.value);
+        });
+
+      const options = {
+        method,
+        headers: requestHeaders,
+      };
+
+      if (["POST", "PUT", "PATCH"].includes(method)) {
+        if (bodyType === "json") {
+          options.headers["Content-Type"] = "application/json";
+          options.body = replaceEnvVars(body);
+        } else if (bodyType === "form") {
+          const hasFile = formParams.some(
+            (p) => p.enabled && p.type === "file" && p.file,
+          );
+
+          if (hasFile) {
+            const formData = new FormData();
+            formParams
+              .filter((p) => p.enabled && p.key)
+              .forEach((p) => {
+                if (p.type === "file" && p.file) {
+                  formData.append(p.key, p.file);
+                } else {
+                  formData.append(p.key, replaceEnvVars(p.value));
+                }
+              });
+            options.body = formData;
+            // Delete content-type so browser sets boundary correctly
+            delete options.headers["Content-Type"];
+          } else {
+            options.headers["Content-Type"] =
+              "application/x-www-form-urlencoded";
+            const params = new URLSearchParams();
+            formParams
+              .filter((p) => p.enabled && p.key)
+              .forEach((p) => {
+                params.append(p.key, replaceEnvVars(p.value));
+              });
+            options.body = params.toString();
+          }
+        } else {
+          options.body = replaceEnvVars(body);
+        }
+      }
+
+      const res = await fetch(finalUrl, options);
+      const endTime = performance.now();
+      const duration = Math.round(endTime - startTime);
+
+      let responseBody;
+      const contentType = res.headers.get("content-type");
+      const contentLength = res.headers.get("content-length");
+
+      if (contentType && contentType.includes("application/json")) {
+        responseBody = await res.json();
+      } else {
+        responseBody = await res.text();
+      }
+
+      const responseHeaders = {};
+      res.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+
+      const responseData = {
+        status: res.status,
+        statusText: res.statusText,
+        headers: responseHeaders,
+        body: responseBody,
+        duration,
+        size: contentLength || new Blob([JSON.stringify(responseBody)]).size,
+        timestamp: new Date().toISOString(),
+      };
+
+      setResponse(responseData);
+
+      // Run tests
+      const results = runTests(responseData);
+      setTestResults(results);
+
+      // Add to history
+      const historyItem = {
+        method,
+        url: finalUrl,
+        timestamp: new Date().toISOString(),
+        status: res.status,
+        duration,
+      };
+
+      const newHistory = [historyItem, ...history].slice(0, 50);
+      setHistory(newHistory);
+      localStorage.setItem("apiHistory", JSON.stringify(newHistory));
+    } catch (error) {
+      setResponse({
+        error: true,
+        message: error.message,
+        timestamp: new Date().toISOString(),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadFromHistory = (item) => {
+    setMethod(item.method);
+    setUrl(item.url);
+    setShowHistory(false);
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem("apiHistory");
+  };
+
+  const formatJSON = (data) => {
+    try {
+      if (typeof data === "string") {
+        return JSON.stringify(JSON.parse(data), null, 2);
+      }
+      return JSON.stringify(data, null, 2);
+    } catch {
+      return data;
+    }
+  };
+
+  const formatBytes = (bytes) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+  };
+
+  const generateCode = () => {
+    const finalUrl = buildUrl();
+    const authHeaders = getAuthHeaders();
+    const allHeaders = { ...authHeaders };
+
+    headers
+      .filter((h) => h.enabled && h.key)
+      .forEach((h) => {
+        allHeaders[h.key] = replaceEnvVars(h.value);
+      });
+
+    const hasJSONBody =
+      (bodyType === "json" || bodyType === "raw") &&
+      ["POST", "PUT", "PATCH"].includes(method) &&
+      body;
+    const hasFormBody =
+      bodyType === "form" &&
+      ["POST", "PUT", "PATCH"].includes(method) &&
+      formParams.some((p) => p.enabled && p.key);
+
+    const bodyContent = replaceEnvVars(body);
+    const enabledFormParams = formParams.filter((p) => p.enabled && p.key);
+
+    switch (codeLanguage) {
+      case "curl":
+        let curl = `curl -X ${method} "${finalUrl}"`;
+        Object.entries(allHeaders).forEach(([key, value]) => {
+          curl += ` \\\n  -H "${key}: ${value}"`;
+        });
+        if (hasJSONBody) {
+          curl += ` \\\n  -d '${bodyContent}'`;
+        } else if (hasFormBody) {
+          enabledFormParams.forEach((p) => {
+            if (p.type === "file") {
+              curl += ` \\\n  -F "${p.key}=@/path/to/file"`;
+            } else {
+              curl += ` \\\n  -F "${p.key}=${replaceEnvVars(p.value)}"`;
+            }
+          });
+        }
+        return curl;
+
+      case "javascript":
+        let jsCode = `fetch("${finalUrl}", {\n  method: "${method}"`;
+        if (Object.keys(allHeaders).length > 0) {
+          jsCode += `,\n  headers: ${JSON.stringify(allHeaders, null, 4)}`;
+        }
+        if (hasJSONBody) {
+          jsCode += `,\n  body: ${bodyType === "json" ? "JSON.stringify(" + bodyContent + ")" : `"${bodyContent}"`}`;
+        } else if (hasFormBody) {
+          jsCode += `,\n  body: new FormData() // Add your fields here`;
+        }
+        jsCode += `\n})\n  .then(response => response.json())\n  .then(data => console.log(data))\n  .catch(error => console.error('Error:', error));`;
+        return jsCode;
+
+      case "python":
+        let pyCode = `import requests\n\n`;
+        pyCode += `url = "${finalUrl}"\n`;
+        if (Object.keys(allHeaders).length > 0) {
+          pyCode += `headers = ${JSON.stringify(allHeaders, null, 4).replace(/"/g, "'")}\n`;
+        }
+        if (hasJSONBody) {
+          pyCode += `data = ${bodyType === "json" ? bodyContent : `"${bodyContent}"`}\n`;
+        } else if (hasFormBody) {
+          pyCode += `files = {\n`;
+          enabledFormParams.forEach((p) => {
+            if (p.type === "file") {
+              pyCode += `    '${p.key}': open('path/to/file', 'rb'),\n`;
+            } else {
+              pyCode += `    '${p.key}': (None, '${replaceEnvVars(p.value)}'),\n`;
+            }
+          });
+          pyCode += `}\n`;
+        }
+        pyCode += `\nresponse = requests.${method.toLowerCase()}(url`;
+        if (Object.keys(allHeaders).length > 0) pyCode += `, headers=headers`;
+        if (hasJSONBody)
+          pyCode += bodyType === "json" ? `, json=data` : `, data=data`;
+        if (hasFormBody) pyCode += `, files=files`;
+        pyCode += `)\nprint(response.json())`;
+        return pyCode;
+
+      case "nodejs":
+        let nodeCode = `const axios = require('axios');\n`;
+        if (hasFormBody) nodeCode += `const FormData = require('form-data');\n`;
+        nodeCode += `\naxios({\n  method: '${method.toLowerCase()}',\n  url: '${finalUrl}'`;
+        if (Object.keys(allHeaders).length > 0) {
+          nodeCode += `,\n  headers: ${JSON.stringify(allHeaders, null, 4)}`;
+        }
+        if (hasJSONBody) {
+          nodeCode += `,\n  data: ${bodyType === "json" ? bodyContent : `"${bodyContent}"`}`;
+        } else if (hasFormBody) {
+          nodeCode += `,\n  data: new FormData() // Use form-data library`;
+        }
+        nodeCode += `\n})\n  .then(response => console.log(response.data))\n  .catch(error => console.error('Error:', error));`;
+        return nodeCode;
+
+      case "php":
+        let phpCode = `<?php\n\n$url = "${finalUrl}";\n`;
+        phpCode += `$ch = curl_init($url);\n\n`;
+        phpCode += `curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "${method}");\n`;
+        phpCode += `curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);\n`;
+        if (Object.keys(allHeaders).length > 0) {
+          phpCode += `\n$headers = [\n`;
+          Object.entries(allHeaders).forEach(([key, value]) => {
+            phpCode += `    "${key}: ${value}",\n`;
+          });
+          phpCode += `];\ncurl_setopt($ch, CURLOPT_HTTPHEADER, $headers);\n`;
+        }
+        if (hasJSONBody) {
+          phpCode += `\n$data = '${bodyContent}';\n`;
+          phpCode += `curl_setopt($ch, CURLOPT_POSTFIELDS, $data);\n`;
+        } else if (hasFormBody) {
+          phpCode += `\n$postFields = [\n`;
+          enabledFormParams.forEach((p) => {
+            if (p.type === "file") {
+              phpCode += `    '${p.key}' => new CURLFile('path/to/file'),\n`;
+            } else {
+              phpCode += `    '${p.key}' => '${replaceEnvVars(p.value)}',\n`;
+            }
+          });
+          phpCode += `];\ncurl_setopt($ch, CURLOPT_POSTFIELDS, $postFields);\n`;
+        }
+        phpCode += `\n$response = curl_exec($ch);\ncurl_close($ch);\n\necho $response;\n?>`;
+        return phpCode;
+
+      default:
+        return "Select a language";
+    }
+  };
+
+  const getStatusClass = (status) => {
+    if (status >= 200 && status < 300) return "status-2xx";
+    if (status >= 300 && status < 400) return "status-3xx";
+    if (status >= 400 && status < 500) return "status-4xx";
+    if (status >= 500) return "status-5xx";
+    return "";
+  };
+
+  return (
+    <div className="app">
+      <header className="header">
+        <div className="container">
+          <div className="header-content">
+            <div className="logo">
+              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                <rect width="32" height="32" rx="8" fill="url(#gradient)" />
+                <path
+                  d="M16 8L22 12V20L16 24L10 20V12L16 8Z"
+                  stroke="white"
+                  strokeWidth="2"
+                  fill="none"
+                />
+                <circle cx="16" cy="16" r="3" fill="white" />
+                <defs>
+                  <linearGradient id="gradient" x1="0" y1="0" x2="32" y2="32">
+                    <stop offset="0%" stopColor="hsl(220, 75%, 55%)" />
+                    <stop offset="100%" stopColor="hsl(260, 75%, 60%)" />
+                  </linearGradient>
+                </defs>
+              </svg>
+              <h1>API Tester Pro</h1>
+            </div>
+            <div className="header-actions">
+              <button
+                className="btn btn-secondary btn-icon"
+                onClick={() => setShowEnv(!showEnv)}
+                title="Environment Variables"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 1v6m0 6v6m8.66-15.66l-4.24 4.24m-4.24 4.24l-4.24 4.24m15.66-8.66l-4.24-4.24m-4.24-4.24l-4.24-4.24" />
+                </svg>
+              </button>
+              <button
+                className="btn btn-secondary btn-icon"
+                onClick={() => setShowHistory(!showHistory)}
+                title="Request History"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <polyline points="12 6 12 12 16 14" />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main className="main-content">
+        <div className="container">
+          {showEnv && (
+            <div className="card env-panel animate-slide-in">
+              <div className="panel-header">
+                <h3>Environment Variables</h3>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowEnv(false)}
+                >
+                  Close
+                </button>
+              </div>
+              <p className="env-description">
+                Use variables in your requests with {`{{variableName}}`} syntax
+              </p>
+              <div className="key-value-list">
+                {envVars.map((env, index) => (
+                  <div key={index} className="key-value-row">
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Variable name"
+                      value={env.key}
+                      onChange={(e) =>
+                        updateEnvVar(index, "key", e.target.value)
+                      }
+                    />
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="Value"
+                      value={env.value}
+                      onChange={(e) =>
+                        updateEnvVar(index, "value", e.target.value)
+                      }
+                    />
+                    <button
+                      className="btn btn-icon btn-secondary"
+                      onClick={() => removeEnvVar(index)}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button className="btn btn-secondary" onClick={addEnvVar}>
+                + Add Variable
+              </button>
+            </div>
+          )}
+
+          {showHistory && (
+            <div className="card history-panel animate-slide-in">
+              <div className="panel-header">
+                <h3>Request History</h3>
+                <div className="flex gap-sm">
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={clearHistory}
+                  >
+                    Clear All
+                  </button>
+                  <button
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowHistory(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+              <div className="history-list">
+                {history.length === 0 ? (
+                  <p className="empty-state">No requests yet</p>
+                ) : (
+                  history.map((item, index) => (
+                    <div
+                      key={index}
+                      className="history-item"
+                      onClick={() => loadFromHistory(item)}
+                    >
+                      <div className="history-item-header">
+                        <span
+                          className={`method-badge method-${item.method.toLowerCase()}`}
+                        >
+                          {item.method}
+                        </span>
+                        <span
+                          className={`status-badge ${getStatusClass(item.status)}`}
+                        >
+                          {item.status}
+                        </span>
+                      </div>
+                      <div className="history-item-url">{item.url}</div>
+                      <div className="history-item-meta">
+                        <span>{new Date(item.timestamp).toLocaleString()}</span>
+                        <span>{item.duration}ms</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="request-section card">
+            <div className="request-url-bar">
+              <select
+                className="select method-select"
+                value={method}
+                onChange={(e) => setMethod(e.target.value)}
+              >
+                {HTTP_METHODS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="text"
+                className="input url-input"
+                placeholder="Enter request URL (use {{varName}} for variables)"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                onKeyPress={(e) => e.key === "Enter" && sendRequest()}
+              />
+              <button
+                className="btn btn-primary send-btn"
+                onClick={sendRequest}
+                disabled={!url || loading}
+              >
+                {loading ? (
+                  <>
+                    <span className="loading">⏳</span>
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <line x1="22" y1="2" x2="11" y2="13" />
+                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                    Send
+                  </>
+                )}
+              </button>
+            </div>
+
+            <div className="tabs">
+              <button
+                className={`tab ${activeTab === "params" ? "active" : ""}`}
+                onClick={() => setActiveTab("params")}
+              >
+                Query Params
+              </button>
+              <button
+                className={`tab ${activeTab === "authorization" ? "active" : ""}`}
+                onClick={() => setActiveTab("authorization")}
+              >
+                🔐 Authorization
+              </button>
+              <button
+                className={`tab ${activeTab === "headers" ? "active" : ""}`}
+                onClick={() => setActiveTab("headers")}
+              >
+                Headers
+              </button>
+              {["POST", "PUT", "PATCH"].includes(method) && (
+                <button
+                  className={`tab ${activeTab === "body" ? "active" : ""}`}
+                  onClick={() => setActiveTab("body")}
+                >
+                  Body
+                </button>
+              )}
+              <button
+                className={`tab ${activeTab === "tests" ? "active" : ""}`}
+                onClick={() => setActiveTab("tests")}
+              >
+                ⚡ Tests
+              </button>
+              <button
+                className={`tab ${activeTab === "code" ? "active" : ""}`}
+                onClick={() => setActiveTab("code")}
+              >
+                💻 Code
+              </button>
+            </div>
+
+            <div className="tab-content">
+              {activeTab === "params" && (
+                <div className="key-value-section">
+                  <div className="key-value-list">
+                    {params.map((param, index) => (
+                      <div key={index} className="key-value-row">
+                        <input
+                          type="checkbox"
+                          checked={param.enabled}
+                          onChange={(e) =>
+                            updateParam(index, "enabled", e.target.checked)
+                          }
+                        />
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Key"
+                          value={param.key}
+                          onChange={(e) =>
+                            updateParam(index, "key", e.target.value)
+                          }
+                        />
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Value"
+                          value={param.value}
+                          onChange={(e) =>
+                            updateParam(index, "value", e.target.value)
+                          }
+                        />
+                        <button
+                          className="btn btn-icon btn-secondary"
+                          onClick={() => removeParam(index)}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button className="btn btn-secondary" onClick={addParam}>
+                    + Add Parameter
+                  </button>
+                </div>
+              )}
+
+              {activeTab === "authorization" && (
+                <div className="auth-section">
+                  <div className="auth-type-selector">
+                    <label className="auth-type-label">
+                      <input
+                        type="radio"
+                        name="authType"
+                        value="none"
+                        checked={authType === "none"}
+                        onChange={(e) => setAuthType(e.target.value)}
+                      />
+                      <span>No Auth</span>
+                    </label>
+                    <label className="auth-type-label">
+                      <input
+                        type="radio"
+                        name="authType"
+                        value="bearer"
+                        checked={authType === "bearer"}
+                        onChange={(e) => setAuthType(e.target.value)}
+                      />
+                      <span>Bearer Token</span>
+                    </label>
+                    <label className="auth-type-label">
+                      <input
+                        type="radio"
+                        name="authType"
+                        value="basic"
+                        checked={authType === "basic"}
+                        onChange={(e) => setAuthType(e.target.value)}
+                      />
+                      <span>Basic Auth</span>
+                    </label>
+                    <label className="auth-type-label">
+                      <input
+                        type="radio"
+                        name="authType"
+                        value="apikey"
+                        checked={authType === "apikey"}
+                        onChange={(e) => setAuthType(e.target.value)}
+                      />
+                      <span>API Key</span>
+                    </label>
+                  </div>
+
+                  {authType === "bearer" && (
+                    <div className="auth-config">
+                      <label>Token</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Enter bearer token (supports {{variables}})"
+                        value={bearerToken}
+                        onChange={(e) => setBearerToken(e.target.value)}
+                      />
+                      <p className="auth-hint">
+                        The token will be sent as: Authorization: Bearer{" "}
+                        {`<token>`}
+                      </p>
+                    </div>
+                  )}
+
+                  {authType === "basic" && (
+                    <div className="auth-config">
+                      <label>Username</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Username"
+                        value={basicUsername}
+                        onChange={(e) => setBasicUsername(e.target.value)}
+                      />
+                      <label>Password</label>
+                      <input
+                        type="password"
+                        className="input"
+                        placeholder="Password"
+                        value={basicPassword}
+                        onChange={(e) => setBasicPassword(e.target.value)}
+                      />
+                      <p className="auth-hint">
+                        Credentials will be base64 encoded and sent as:
+                        Authorization: Basic {`<encoded>`}
+                      </p>
+                    </div>
+                  )}
+
+                  {authType === "apikey" && (
+                    <div className="auth-config">
+                      <label>Header Name</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g., X-API-Key"
+                        value={apiKeyHeader}
+                        onChange={(e) => setApiKeyHeader(e.target.value)}
+                      />
+                      <label>Value</label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Enter API key (supports {{variables}})"
+                        value={apiKeyValue}
+                        onChange={(e) => setApiKeyValue(e.target.value)}
+                      />
+                      <p className="auth-hint">
+                        The API key will be sent as a custom header
+                      </p>
+                    </div>
+                  )}
+
+                  {authType === "none" && (
+                    <p className="auth-hint">
+                      No authentication will be used for this request
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {activeTab === "headers" && (
+                <div className="key-value-section">
+                  <div className="key-value-list">
+                    {headers.map((header, index) => (
+                      <div key={index} className="key-value-row">
+                        <input
+                          type="checkbox"
+                          checked={header.enabled}
+                          onChange={(e) =>
+                            updateHeader(index, "enabled", e.target.checked)
+                          }
+                        />
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Key"
+                          value={header.key}
+                          onChange={(e) =>
+                            updateHeader(index, "key", e.target.value)
+                          }
+                        />
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Value"
+                          value={header.value}
+                          onChange={(e) =>
+                            updateHeader(index, "value", e.target.value)
+                          }
+                        />
+                        <button
+                          className="btn btn-icon btn-secondary"
+                          onClick={() => removeHeader(index)}
+                        >
+                          <svg
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button className="btn btn-secondary" onClick={addHeader}>
+                    + Add Header
+                  </button>
+                </div>
+              )}
+
+              {activeTab === "body" &&
+                ["POST", "PUT", "PATCH"].includes(method) && (
+                  <div className="body-section">
+                    <div className="body-type-selector">
+                      <button
+                        className={`btn ${bodyType === "json" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setBodyType("json")}
+                      >
+                        JSON
+                      </button>
+                      <button
+                        className={`btn ${bodyType === "form" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setBodyType("form")}
+                      >
+                        Form Data
+                      </button>
+                      <button
+                        className={`btn ${bodyType === "raw" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setBodyType("raw")}
+                      >
+                        Raw
+                      </button>
+                    </div>
+
+                    {bodyType === "form" ? (
+                      <div className="key-value-section">
+                        <div className="key-value-list">
+                          {formParams.map((param, index) => (
+                            <div
+                              key={index}
+                              className="key-value-row form-data-row"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={param.enabled}
+                                onChange={(e) =>
+                                  updateFormParam(
+                                    index,
+                                    "enabled",
+                                    e.target.checked,
+                                  )
+                                }
+                              />
+                              <input
+                                type="text"
+                                className="input"
+                                placeholder="Key"
+                                value={param.key}
+                                onChange={(e) =>
+                                  updateFormParam(index, "key", e.target.value)
+                                }
+                              />
+                              <div className="form-data-value-node">
+                                <select
+                                  className="select type-select"
+                                  value={param.type}
+                                  onChange={(e) =>
+                                    updateFormParam(
+                                      index,
+                                      "type",
+                                      e.target.value,
+                                    )
+                                  }
+                                >
+                                  <option value="text">Text</option>
+                                  <option value="file">File</option>
+                                </select>
+                                {param.type === "text" ? (
+                                  <input
+                                    type="text"
+                                    className="input"
+                                    placeholder="Value"
+                                    value={param.value}
+                                    onChange={(e) =>
+                                      updateFormParam(
+                                        index,
+                                        "value",
+                                        e.target.value,
+                                      )
+                                    }
+                                  />
+                                ) : (
+                                  <div className="file-input-wrapper">
+                                    <input
+                                      type="file"
+                                      className="file-input"
+                                      onChange={(e) =>
+                                        updateFormParam(
+                                          index,
+                                          "file",
+                                          e.target.files[0],
+                                        )
+                                      }
+                                    />
+                                    <span className="file-name text-truncate">
+                                      {param.file
+                                        ? param.file.name
+                                        : "Select file..."}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                              <button
+                                className="btn btn-icon btn-secondary"
+                                onClick={() => removeFormParam(index)}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <line x1="18" y1="6" x2="6" y2="18" />
+                                  <line x1="6" y1="6" x2="18" y2="18" />
+                                </svg>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          className="btn btn-secondary"
+                          onClick={addFormParam}
+                        >
+                          + Add Row
+                        </button>
+                      </div>
+                    ) : (
+                      <textarea
+                        className="input body-textarea"
+                        placeholder={
+                          bodyType === "json"
+                            ? '{\n  "key": "value"\n}'
+                            : "Enter raw body content"
+                        }
+                        value={body}
+                        onChange={(e) => setBody(e.target.value)}
+                        rows={12}
+                      />
+                    )}
+                  </div>
+                )}
+
+              {activeTab === "tests" && (
+                <div className="tests-section">
+                  <div className="script-editor">
+                    <h4>Pre-request Script</h4>
+                    <p className="script-hint">
+                      JavaScript code to run before sending the request
+                    </p>
+                    <textarea
+                      className="input script-textarea"
+                      placeholder="// Example:\n// console.log('Running pre-request script');"
+                      value={preRequestScript}
+                      onChange={(e) => setPreRequestScript(e.target.value)}
+                      rows={6}
+                    />
+                  </div>
+                  <div className="script-editor">
+                    <h4>Tests</h4>
+                    <p className="script-hint">
+                      Write tests to validate the response
+                    </p>
+                    <textarea
+                      className="input script-textarea"
+                      placeholder="// Example:\n// expect(response.status).toBe(200);\n// expect(response.duration).toBeLessThan(1000);\n// expect(response.body).toContain('userId');"
+                      value={testScript}
+                      onChange={(e) => setTestScript(e.target.value)}
+                      rows={8}
+                    />
+                  </div>
+                  <div className="test-examples">
+                    <h5>Available assertions:</h5>
+                    <code>expect(value).toBe(expected)</code>
+                    <code>expect(value).toEqual(expected)</code>
+                    <code>expect(value).toContain(substring)</code>
+                    <code>expect(value).toBeLessThan(number)</code>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === "code" && (
+                <div className="code-section">
+                  <div className="code-language-selector">
+                    <button
+                      className={`btn btn-sm ${codeLanguage === "curl" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setCodeLanguage("curl")}
+                    >
+                      cURL
+                    </button>
+                    <button
+                      className={`btn btn-sm ${codeLanguage === "javascript" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setCodeLanguage("javascript")}
+                    >
+                      JavaScript
+                    </button>
+                    <button
+                      className={`btn btn-sm ${codeLanguage === "python" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setCodeLanguage("python")}
+                    >
+                      Python
+                    </button>
+                    <button
+                      className={`btn btn-sm ${codeLanguage === "nodejs" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setCodeLanguage("nodejs")}
+                    >
+                      Node.js
+                    </button>
+                    <button
+                      className={`btn btn-sm ${codeLanguage === "php" ? "btn-primary" : "btn-secondary"}`}
+                      onClick={() => setCodeLanguage("php")}
+                    >
+                      PHP
+                    </button>
+                  </div>
+                  <div className="code-block">
+                    <pre>{generateCode()}</pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {response && (
+            <div className="response-section card animate-slide-in">
+              <div className="response-header">
+                <h3>Response</h3>
+                {!response.error && (
+                  <div className="response-meta">
+                    <span
+                      className={`status-badge ${getStatusClass(response.status)}`}
+                    >
+                      {response.status} {response.statusText}
+                    </span>
+                    <span
+                      className="badge"
+                      style={{ background: "var(--bg-tertiary)" }}
+                    >
+                      ⚡ {response.duration}ms
+                    </span>
+                    <span
+                      className="badge"
+                      style={{ background: "var(--bg-tertiary)" }}
+                    >
+                      📦 {formatBytes(response.size)}
+                    </span>
+                    <span
+                      className="badge"
+                      style={{ background: "var(--bg-tertiary)" }}
+                    >
+                      📅 {new Date(response.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {response.error ? (
+                <div className="error-message">
+                  <h4>❌ Error</h4>
+                  <p>{response.message}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="tabs">
+                    <button
+                      className={`tab ${responseTab === "pretty" ? "active" : ""}`}
+                      onClick={() => setResponseTab("pretty")}
+                    >
+                      Pretty
+                    </button>
+                    <button
+                      className={`tab ${responseTab === "raw" ? "active" : ""}`}
+                      onClick={() => setResponseTab("raw")}
+                    >
+                      Raw
+                    </button>
+                    <button
+                      className={`tab ${responseTab === "headers" ? "active" : ""}`}
+                      onClick={() => setResponseTab("headers")}
+                    >
+                      Headers
+                    </button>
+                    {testResults.length > 0 && (
+                      <button
+                        className={`tab ${responseTab === "tests" ? "active" : ""}`}
+                        onClick={() => setResponseTab("tests")}
+                      >
+                        Test Results (
+                        {testResults.filter((t) => t.passed).length}/
+                        {testResults.length})
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="response-content">
+                    {responseTab === "pretty" && (
+                      <div className="code-block">
+                        <pre>{formatJSON(response.body)}</pre>
+                      </div>
+                    )}
+
+                    {responseTab === "raw" && (
+                      <div className="code-block">
+                        <pre>
+                          {typeof response.body === "string"
+                            ? response.body
+                            : JSON.stringify(response.body)}
+                        </pre>
+                      </div>
+                    )}
+
+                    {responseTab === "headers" && (
+                      <div className="code-block">
+                        <pre>{JSON.stringify(response.headers, null, 2)}</pre>
+                      </div>
+                    )}
+
+                    {responseTab === "tests" && (
+                      <div className="test-results">
+                        {testResults.map((result, index) => (
+                          <div
+                            key={index}
+                            className={`test-result ${result.passed ? "test-passed" : "test-failed"}`}
+                          >
+                            {result.message}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+export default App;

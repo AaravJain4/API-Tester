@@ -1,0 +1,266 @@
+{
+  "name": "Sample API Collection",
+  "description": "A collection of sample API requests to get you started with API Tester Pro",
+  "version": "1.0.0",
+  "requests": [
+    {
+      "name": "Get All Users",
+      "method": "GET",
+      "url": "https://jsonplaceholder.typicode.com/users",
+      "description": "Fetches a list of all users from JSONPlaceholder API",
+      "headers": [],
+      "params": []
+    },
+    {
+      "name": "Get Single User",
+      "method": "GET",
+      "url": "https://jsonplaceholder.typicode.com/users/1",
+      "description": "Fetches details of a single user by ID",
+      "headers": [],
+      "params": []
+    },
+    {
+      "name": "Get User Posts",
+      "method": "GET",
+      "url": "https://jsonplaceholder.typicode.com/posts",
+      "description": "Fetches posts with query parameter filtering",
+      "headers": [],
+      "params": [
+        {
+          "key": "userId",
+          "value": "1",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "Create New Post",
+      "method": "POST",
+      "url": "https://jsonplaceholder.typicode.com/posts",
+      "description": "Creates a new post with JSON body",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json",
+          "enabled": true
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "content": "{\n  \"title\": \"My Amazing Post\",\n  \"body\": \"This is the content of my post\",\n  \"userId\": 1\n}"
+      }
+    },
+    {
+      "name": "Update Post",
+      "method": "PUT",
+      "url": "https://jsonplaceholder.typicode.com/posts/1",
+      "description": "Updates an existing post completely",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json",
+          "enabled": true
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "content": "{\n  \"id\": 1,\n  \"title\": \"Updated Title\",\n  \"body\": \"Updated content\",\n  \"userId\": 1\n}"
+      }
+    },
+    {
+      "name": "Partial Update Post",
+      "method": "PATCH",
+      "url": "https://jsonplaceholder.typicode.com/posts/1",
+      "description": "Partially updates a post (only specified fields)",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/json",
+          "enabled": true
+        }
+      ],
+      "params": [],
+      "body": {
+        "type": "json",
+        "content": "{\n  \"title\": \"Patched Title\"\n}"
+      }
+    },
+    {
+      "name": "Delete Post",
+      "method": "DELETE",
+      "url": "https://jsonplaceholder.typicode.com/posts/1",
+      "description": "Deletes a post by ID",
+      "headers": [],
+      "params": []
+    },
+    {
+      "name": "Get Random User",
+      "method": "GET",
+      "url": "https://randomuser.me/api/",
+      "description": "Fetches a random user from RandomUser API",
+      "headers": [],
+      "params": []
+    },
+    {
+      "name": "Get Multiple Random Users",
+      "method": "GET",
+      "url": "https://randomuser.me/api/",
+      "description": "Fetches multiple random users with query params",
+      "headers": [],
+      "params": [
+        {
+          "key": "results",
+          "value": "5",
+          "enabled": true
+        },
+        {
+          "key": "gender",
+          "value": "female",
+          "enabled": false
+        }
+      ]
+    },
+    {
+      "name": "Get GitHub User",
+      "method": "GET",
+      "url": "https://api.github.com/users/octocat",
+      "description": "Fetches GitHub user information",
+      "headers": [
+        {
+          "key": "Accept",
+          "value": "application/vnd.github.v3+json",
+          "enabled": true
+        }
+      ],
+      "params": []
+    },
+    {
+      "name": "Get GitHub Repos",
+      "method": "GET",
+      "url": "https://api.github.com/users/octocat/repos",
+      "description": "Fetches repositories for a GitHub user",
+      "headers": [
+        {
+          "key": "Accept",
+          "value": "application/vnd.github.v3+json",
+          "enabled": true
+        }
+      ],
+      "params": [
+        {
+          "key": "sort",
+          "value": "updated",
+          "enabled": true
+        },
+        {
+          "key": "per_page",
+          "value": "10",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "Get Cat Fact",
+      "method": "GET",
+      "url": "https://catfact.ninja/fact",
+      "description": "Fetches a random cat fact",
+      "headers": [],
+      "params": []
+    },
+    {
+      "name": "Get Dog Image",
+      "method": "GET",
+      "url": "https://dog.ceo/api/breeds/image/random",
+      "description": "Fetches a random dog image URL",
+      "headers": [],
+      "params": []
+    },
+    {
+      "name": "Get IP Information",
+      "method": "GET",
+      "url": "https://ipapi.co/json/",
+      "description": "Fetches information about your IP address",
+      "headers": [],
+      "params": []
+    },
+    {
+      "name": "Get Weather Data",
+      "method": "GET",
+      "url": "https://api.open-meteo.com/v1/forecast",
+      "description": "Fetches weather forecast data (no API key required)",
+      "headers": [],
+      "params": [
+        {
+          "key": "latitude",
+          "value": "52.52",
+          "enabled": true
+        },
+        {
+          "key": "longitude",
+          "value": "13.41",
+          "enabled": true
+        },
+        {
+          "key": "current_weather",
+          "value": "true",
+          "enabled": true
+        }
+      ]
+    }
+  ],
+  "environments": [
+    {
+      "name": "JSONPlaceholder",
+      "variables": [
+        {
+          "key": "baseUrl",
+          "value": "https://jsonplaceholder.typicode.com"
+        },
+        {
+          "key": "userId",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "name": "GitHub API",
+      "variables": [
+        {
+          "key": "githubApi",
+          "value": "https://api.github.com"
+        },
+        {
+          "key": "username",
+          "value": "octocat"
+        },
+        {
+          "key": "token",
+          "value": "your-github-token-here"
+        }
+      ]
+    },
+    {
+      "name": "Local Development",
+      "variables": [
+        {
+          "key": "localhost",
+          "value": "http://localhost:3000"
+        },
+        {
+          "key": "apiVersion",
+          "value": "v1"
+        }
+      ]
+    }
+  ],
+  "tips": [
+    "Use {{variableName}} syntax to reference environment variables in your requests",
+    "Press Enter in the URL field to quickly send a request",
+    "Toggle checkboxes to enable/disable params and headers without deleting them",
+    "Check the Code tab to generate cURL commands for your requests",
+    "Your request history is automatically saved - click the clock icon to view it",
+    "All data is stored locally in your browser - no external servers involved"
+  ]
+}

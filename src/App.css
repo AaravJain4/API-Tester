@@ -1,13 +1,15 @@
 .app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-layout {
   display: flex;
   flex: 1;
   overflow: hidden;
+  height: 0; /* Ensures flex-grow behaves correctly with overflow: hidden */
 }
 
 /* Header */

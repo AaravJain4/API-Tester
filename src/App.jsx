@@ -13,6 +13,8 @@ import { HTTP_METHODS } from './utils/constants';
 import { buildUrl, getStatusClass } from './utils/helpers';
 import { sendApiRequest, runTests } from './services/apiService';
 import { generateCode } from './utils/codeGenerator';
+import { isCurlCommand, parseCurl } from './utils/curlParser';
+
 
 function App() {
   // UI State
@@ -23,6 +25,8 @@ function App() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [requestName, setRequestName] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
+
 
   // Request State
   const request = useRequest();
@@ -40,7 +44,52 @@ function App() {
   const [preRequestScript, setPreRequestScript] = useState('');
   const [testScript, setTestScript] = useState('');
 
+  const processUrlInput = (inputVal) => {
+    if (isCurlCommand(inputVal)) {
+      const parsed = parseCurl(inputVal);
+      if (parsed) {
+        request.loadRequest(parsed);
+        auth.loadAuth(parsed.auth);
+        setToastMessage('⚡ cURL command parsed & request autofilled!');
+        setTimeout(() => setToastMessage(''), 3500);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const handleUrlChange = (e) => {
+    const value = e.target.value;
+    if (!processUrlInput(value)) {
+      request.setUrl(value);
+    }
+  };
+
+  const handleUrlPaste = (e) => {
+    const pastedText = e.clipboardData.getData('text');
+    if (isCurlCommand(pastedText)) {
+      e.preventDefault();
+      processUrlInput(pastedText);
+    }
+  };
+
+  const handlePasteFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (isCurlCommand(text)) {
+        processUrlInput(text);
+      } else if (text) {
+        request.setUrl(text.trim());
+        setToastMessage('URL pasted from clipboard');
+        setTimeout(() => setToastMessage(''), 2500);
+      }
+    } catch {
+      alert('Clipboard access denied or unsupported by browser. Please paste directly into the URL field.');
+    }
+  };
+
   const sendRequest = async () => {
+
     setLoading(true);
     setResponse(null);
     setTestResults([]);
@@ -365,11 +414,22 @@ function App() {
                 <input
                   type="text"
                   className="input url-input"
-                  placeholder="Enter request URL (use {{varName}} for variables)"
+                  placeholder="Enter request URL or paste cURL command..."
                   value={request.url}
-                  onChange={(e) => request.setUrl(e.target.value)}
+                  onChange={handleUrlChange}
+                  onPaste={handleUrlPaste}
                   onKeyPress={(e) => e.key === 'Enter' && sendRequest()}
                 />
+                <button
+                  type="button"
+                  className="btn btn-secondary curl-paste-btn"
+                  onClick={handlePasteFromClipboard}
+                  title="Paste cURL from clipboard and autofill request"
+                  style={{ whiteSpace: 'nowrap', fontSize: '0.8125rem' }}
+                >
+                  📋 Paste cURL
+                </button>
+
                 <button
                   className="btn btn-primary send-btn"
                   onClick={sendRequest}
@@ -491,6 +551,12 @@ function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {toastMessage && (
+        <div className="toast-notification">
+          {toastMessage}
         </div>
       )}
     </div>

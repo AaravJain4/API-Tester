@@ -58,6 +58,24 @@ const ResponseViewer = ({ response, testResults }) => {
                         </svg>
                         {formatBytes(response.size)}
                     </span>
+                    {response.isBinary && response.binaryBlob && (
+                        <button
+                            className="btn btn-secondary btn-sm"
+                            type="button"
+                            onClick={() => {
+                                const downloadUrl = URL.createObjectURL(response.binaryBlob);
+                                const link = document.createElement('a');
+                                link.href = downloadUrl;
+                                link.download = response.binaryFileName || 'download';
+                                document.body.appendChild(link);
+                                link.click();
+                                document.body.removeChild(link);
+                                URL.revokeObjectURL(downloadUrl);
+                            }}
+                        >
+                            Download
+                        </button>
+                    )}
                 </div>
             </div>
 
